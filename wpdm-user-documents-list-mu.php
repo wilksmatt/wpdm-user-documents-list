@@ -1,17 +1,20 @@
 <?php
 /*
-Plugin Name: WPDM User Documents List Shortcode (MU)
+Plugin Name: WPDM User Documents List (MU)
 Description: Provides a [wpdm_user_documents_list] shortcode for displaying user-accessible WPDM documents with category filtering, as a must-use plugin.
-Author: Your Name
+Author: Matt Wilks
 Version: 1.0
 */
 
 function wpdm_user_documents_list_shortcode($atts) {
+
+    // Ensure user is logged in
     if (!is_user_logged_in()) {
-        wp_redirect(site_url('/wp-downloads-login/'));
+        wp_redirect(site_url('/members/login/'));
         exit;
     }
 
+    // Start output buffering
     ob_start();
 
     // Enqueue DataTables assets
@@ -26,12 +29,16 @@ function wpdm_user_documents_list_shortcode($atts) {
     );
     $packages = get_posts($args);
 
+    // Prepare table rows
     $rows = '';
+
     // We'll collect category IDs that come from accessible packages
     $cats_from_packages = [];
+
     // Tag set (commented out for now)
     // $tags_set = [];
 
+    // Build table rows
     foreach ($packages as $package) {
         $package_id = $package->ID;
 
@@ -64,17 +71,17 @@ function wpdm_user_documents_list_shortcode($atts) {
         */
 
         // Publish Date
-        $publish_date = get_the_date('Y-m-d', $package_id);
+        //$publish_date = get_the_date('Y-m-d', $package_id);
 
         // Download button
         $download_link = do_shortcode("[wpdm_package id='{$package_id}' template='link-template-button']");
 
-        // Table row (Category column enabled)
+        // Table row (Category column enabled, Date column commented out)
         $rows .= '<tr>';
         $rows .= '<td>' . esc_html($package->post_title) . '</td>';
         $rows .= '<td>' . esc_html($category_str) . '</td>'; // Category column enabled
         // $rows .= '<td>' . esc_html($tag_str) . '</td>'; // Tag column commented out
-        $rows .= '<td>' . esc_html($publish_date) . '</td>';
+        // $rows .= '<td>' . esc_html($publish_date) . '</td>'; // Date column commented out
         $rows .= '<td>' . $download_link . '</td>';
         $rows .= '</tr>';
     }
@@ -199,6 +206,7 @@ function wpdm_user_documents_list_shortcode($atts) {
     // ---------- Output filters ----------
 
     // Category filter (hierarchical, only relevant categories)
+    echo '<div>';
     echo '<label for="category-filter">Filter by Category:</label> ';
     echo '<select id="category-filter" style="margin-right:15px; margin-bottom:10px;">';
     echo '<option value="">All Categories</option>';
@@ -219,14 +227,17 @@ function wpdm_user_documents_list_shortcode($atts) {
 
     // Search box
     echo '<input type="text" id="doc-search" placeholder="Search documents..." style="padding:5px;">';
+    echo '</div>';
 
-    // Table markup
-    echo '<table id="wpdm-documents" class="display" style="margin-top:10px;"><thead><tr>
-        <th>Title</th>
-        <th>Category</th>
-        <th>Date</th>
-        <th>Download</th>
-    </tr></thead><tbody>';
+    // ---------- Output table ----------
+
+    // Table markup (Date column commented out)
+    echo '<table id="wpdm-documents" class="display" style="margin-top:10px;"><thead><tr>';
+    echo '<th>Title</th>';
+    echo '<th>Category</th>';
+    // echo '<th>Date</th>';
+    echo '<th>Download</th>';
+    echo '</tr></thead><tbody>';
     echo $rows;
     echo '</tbody></table>';
 
@@ -236,8 +247,11 @@ function wpdm_user_documents_list_shortcode($atts) {
     jQuery(document).ready(function($) {
         var table = $('#wpdm-documents').DataTable({
             dom: 'tip',
-            pageLength: 100,
-            order: [[2, 'desc']] // Default sort by Date (index 2)
+            pageLength: 50,
+            order: [[0, 'desc']], // Default sort by Title (index 0)
+            columnDefs: [
+                { targets: 2, orderable: false } // Disable sorting for Download column (index 2)
+            ]
         });
 
         $('#doc-search').on('keyup', function () {
@@ -272,3 +286,56 @@ function wpdm_user_documents_list_shortcode($atts) {
     return ob_get_clean();
 }
 add_shortcode('wpdm_user_documents_list', 'wpdm_user_documents_list_shortcode');
+
+
+/**
+ * Shortcode handler for [welcome_logout].
+ *
+ * Displays a welcome message with the current user's display name and a logout link.
+ * If the user is not logged in, returns an empty string.
+ *
+ * Usage: [welcome_logout redirect="/some-page/"]
+ * The 'redirect' attribute sets the URL to redirect to after logout (defaults to homepage).
+ */
+function custom_welcome_logout_shortcode($atts) {
+
+    // Set default attributes and merge with user-supplied attributes
+    $atts = shortcode_atts(
+        array(
+            'redirect' => home_url(), // Default redirect is homepage
+        ),
+        $atts,
+        'welcome_logout'
+    );
+
+    // Only show message if user is logged in
+    if (is_user_logged_in()) {
+        // Get current user info
+        $current_user = wp_get_current_user();
+        $username = esc_html($current_user->display_name);
+
+        // Generate logout URL with redirect
+        $logout_url = wp_logout_url(esc_url($atts['redirect']));
+
+        // Return formatted welcome message and logout link
+        return sprintf(
+            'Welcome, %s | <a href="%s">Logout</a>',
+            $username,
+            $logout_url
+        );
+    } else {
+        // Not logged in: return empty string (or could return a login link)
+        return '';
+    }
+}
+add_shortcode('welcome_logout', 'custom_welcome_logout_shortcode');
+
+
+// Restrict access to WPDM posts
+add_action('template_redirect', function() {
+    if (is_singular('wpdmpro') && !current_user_can('manage_options')) {
+        //wp_redirect(home_url());
+        wp_die('Access denied');
+        exit;
+    }
+});
