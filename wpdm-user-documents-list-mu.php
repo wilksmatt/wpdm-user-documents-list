@@ -339,3 +339,135 @@ add_action('template_redirect', function() {
         exit;
     }
 });
+
+
+/**
+ * WPDM Admin Filters: Category + Tag with debug + fallback logic.
+ * Add this to functions.php or a small mu-plugin.
+ */
+add_action('restrict_manage_posts', function($post_type) {
+    if ($post_type !== 'wpdmpro') return;
+
+    // Category dropdown
+    $taxonomy = 'wpdmcategory';
+    $selected = isset($_GET[$taxonomy]) ? (int) $_GET[$taxonomy] : '';
+    $cat_terms_exist = get_terms([
+        'taxonomy'   => $taxonomy,
+        'hide_empty' => false,
+        'number'     => 1,
+        'fields'     => 'ids'
+    ]);
+
+    if (empty($cat_terms_exist)) {
+        echo '<select name="' . esc_attr($taxonomy) . '" id="' . esc_attr($taxonomy) . '" class="postform">';
+        echo '<option value="0">' . esc_html__('All Categories', 'wpdm') . '</option>';
+        echo '</select>';
+    } else {
+        wp_dropdown_categories([
+            'show_option_all' => __('All Categories', 'wpdm'),
+            'taxonomy'        => $taxonomy,
+            'name'            => $taxonomy,
+            'orderby'         => 'name',
+            'selected'        => $selected,
+            'hierarchical'    => true,
+            'depth'           => 3,
+            'show_count'      => false,
+            'hide_empty'      => false,
+            'hide_if_empty'   => false,
+        ]);
+    }
+
+    // Tag dropdown
+    $taxonomy = 'wpdmtag';
+    $selected = isset($_GET[$taxonomy]) ? (int) $_GET[$taxonomy] : '';
+    $tag_terms_exist = get_terms([
+        'taxonomy'   => $taxonomy,
+        'hide_empty' => false,
+        'number'     => 1, // just need to know if at least one exists
+        'fields'     => 'ids'
+    ]);
+
+    if (empty($tag_terms_exist)) {
+        // Manual fallback select when there are NO tag terms at all.
+        echo '<select name="' . esc_attr($taxonomy) . '" id="' . esc_attr($taxonomy) . '" class="postform">';
+        echo '<option value="0">' . esc_html__('All Tags', 'wpdm') . '</option>';
+        echo '</select>';
+    } else {
+        // Normal dropdown when terms exist.
+        wp_dropdown_categories([
+            'show_option_all' => __('All Tags', 'wpdm'),
+            'taxonomy'        => $taxonomy,
+            'name'            => $taxonomy,
+            'orderby'         => 'name',
+            'selected'        => $selected,
+            'hierarchical'    => false,
+            'show_count'      => false,
+            'hide_empty'      => false,
+            'hide_if_empty'   => false,
+        ]);
+    }
+});
+
+
+/**
+ * Filter WPDM admin list (All Packages) by category/tag.
+ * Includes debug + fallback slug conversion logic.
+ */
+add_action('pre_get_posts', function($query) {
+    global $pagenow;
+
+    if (
+        !is_admin() ||
+        $pagenow !== 'edit.php' ||
+        empty($_GET['post_type']) ||
+        $_GET['post_type'] !== 'wpdmpro' ||
+        !$query->is_main_query()
+    ) {
+        return;
+    }
+
+    $tax_query = [];
+
+    // Category filter logic
+    if (!empty($_GET['wpdmcategory']) && is_numeric($_GET['wpdmcategory'])) {
+        $cat_id = (int) $_GET['wpdmcategory'];
+        $term   = get_term_by('id', $cat_id, 'wpdmcategory');
+
+        if ($term && !is_wp_error($term)) {
+            // Add tax_query version
+            $tax_query[] = [
+                'taxonomy'         => 'wpdmcategory',
+                'field'            => 'term_id',
+                'terms'            => $cat_id,
+                'include_children' => true,
+            ];
+
+            // Add fallback slug-based query var (for WPDM)
+            $query->set('wpdmcategory', $term->slug);
+
+        }
+    }
+
+    // Tag filter logic
+    if (!empty($_GET['wpdmtag']) && is_numeric($_GET['wpdmtag'])) {
+        $tag_id = (int) $_GET['wpdmtag'];
+        $term   = get_term_by('id', $tag_id, 'wpdmtag');
+
+        if ($term && !is_wp_error($term)) {
+            $tax_query[] = [
+                'taxonomy' => 'wpdmtag',
+                'field'    => 'term_id',
+                'terms'    => $tag_id,
+            ];
+
+            // Add fallback slug-based query var
+            $query->set('wpdmtag', $term->slug);
+
+        }
+    }
+
+    if (!empty($tax_query)) {
+        $query->set('tax_query', $tax_query);
+    }
+
+});
