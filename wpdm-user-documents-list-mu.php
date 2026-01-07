@@ -74,7 +74,7 @@ function wpdm_user_documents_list_shortcode($atts) {
         //$publish_date = get_the_date('Y-m-d', $package_id);
 
         // Download button
-        $download_link = do_shortcode("[wpdm_package id='{$package_id}' template='link-template-button']");
+        $download_link = do_shortcode("[wpdm_package id='{$package_id}' template='link-template-button-new-tab']");
 
         // Table row (Category column enabled, Date column commented out)
         $rows .= '<tr>';
